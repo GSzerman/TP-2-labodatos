@@ -48,7 +48,7 @@ Se puede ver que hay muchos mas viajes los dias laborables. La tomare en conside
 
 clima_ecobici %>%
   mutate(
-      lluvias = cut(prcp, breaks= c(0,5,20,50,300), include.lowest=T),
+      lluvias = cut(prcp, breaks= c(0,1,20,50,300), include.lowest=T),
       n_laborable = if_else(dia_laborable, n,0),
   ) %>%
   group_by(lluvias)%>%
@@ -148,3 +148,69 @@ clima_ecobici%>%
 ```
 
 Hay mas viajes en promedio cuando el viento viene del Este y nor este pero no es tan impactante, hay muchos menos viajes en los dias no laborables cuando el viento viene del SE
+
+# EDA PARTE 2
+
+```{r}
+data_2 = fake_news%>%
+  select(type,title_has_excl,title_words, negative)
+data_2
+```
+
+```{r}
+data_2 %>%
+  ggplot(aes(fill=type,x=title_has_excl)) +
+  geom_bar()
+```
+
+```{r}
+data_2 %>%
+  filter(type!="fake") %>%
+  ggplot(aes(fill=type,x=title_has_excl)) +
+  geom_bar()
+```
+
+```{r}
+data_2 %>%
+  filter(type=="fake") %>%
+  ggplot(aes(fill=type,x=title_has_excl)) +
+  geom_bar()
+```
+
+```{r}
+data_2 %>%
+  group_by(type) %>%
+  summarise(
+    title_words = mean(title_words)
+  ) %>%
+  ggplot(aes(x=type,fill=type, y=title_words))+
+  geom_col()
+```
+
+casi no hay diferencia
+
+```{r}
+data_2 %>%
+  group_by(type) %>%
+  summarise(
+    negative = mean(negative)
+  ) %>%
+  ggplot(aes(x=type,fill=type, y=negative))+
+  geom_col()
+```
+
+```{r}
+data_2 %>%
+  ggplot(aes(x=type, y=negative))+
+  geom_boxplot()
+```
+
+```{r}
+data_2 %>%
+  ggplot(aes(x=type, y=title_words))+
+  geom_boxplot()
+```
+
+```{r}
+c('type ~ ')
+```
