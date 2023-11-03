@@ -1,6 +1,6 @@
 ### Importante: 
 
-Una vez hecho el clone del repositorio, en RStudio ir a file>open project y abrir 'TP-1 Labo Datos.Rproj' para conservar las referencias de los path a los archivos .csv 
+Una vez hecho el clone del repositorio, en RStudio ir a file>open project y abrir 'TP-1 Labo Datos.Rproj' para conservar las referencias de los path al resto de archivos utilizados.
 
 Para cargar los datasets utilizamos el comando load("tp2.RData")
 
