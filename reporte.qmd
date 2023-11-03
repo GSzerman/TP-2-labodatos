@@ -1,0 +1,122 @@
+---
+title: "Reporte"
+format: 
+  html:
+    self-contained: true
+editor: visual
+author: "Agustin Lehmann, Gabriel Szerman, Ernesto Mercado, Ignacio Gallego"
+---
+
+# Imports:
+
+```{r }
+#| output: false
+require(tidyverse)
+require(knitr)
+
+load("./tp2.RData")
+theme_set(theme_classic())
+```
+
+Inicialmente contaremos feriados como dias laborables.
+
+```{r}
+clima_ecobici = clima_ecobici %>%
+  mutate(
+    dia_laborable = if_else(lubridate::wday(date)==1| lubridate::wday(date)==7,"No Laborable","Laborable")
+  )
+
+kable(head(clima_ecobici))
+```
+
+# Parte 1: Eco bicis
+
+## EDA:
+
+## Día Laborable
+
+```{r}
+clima_ecobici %>%
+  group_by(dia_laborable) %>%
+  summarise(
+    prom_viajes = mean(n)
+  )%>%
+  ggplot(aes(y=prom_viajes, x=dia_laborable))+
+  geom_col(fill='darkcyan') + 
+  labs(
+    title = "Promedio de viajes por día laborable o no",
+    y = "Promedio de viajes",
+    x = "Tipo de día"
+  )
+```
+
+Se puede ver que hay muchos mas viajes los dias laborables. La tomare en consideracion para el resto de los analisis
+
+## Precipitación
+
+```{r}
+clima_ecobici %>%
+  mutate(
+      lluvias = cut(prcp, breaks= c(0,1,20,50,300), labels=c("0","1-20","20-50","50+"), include.lowest=T),
+      n_laborable = if_else(dia_laborable=="Laborable", n,0),
+  ) %>%
+  group_by(lluvias)%>%
+  summarise(
+    prom_viajes_por_dia = mean(n),
+    n_laborable = mean(n_laborable),
+  ) %>%
+  ggplot(aes(x=lluvias, y=prom_viajes_por_dia))+
+  geom_col(aes(fill='Día No Laborable')) +
+  geom_col(aes(y=n_laborable,fill='Día Laborable')) +
+  labs(
+    title = "Viajes promedio segun precipitación",
+    x= "Precipitación (mm)",
+    y= "Promedio de viajes",
+    legend=""
+  ) +
+  theme(legend.title=element_blank()) 
+```
+
+Se puede ver que hay menos promedio de viajes por dia (hasta \~30% menos) si llueve y si llueve mucho hay muchisimos menos.
+
+```{r }
+#| echo: false
+kable(clima_ecobici %>%
+  mutate(
+      lluvias = cut(prcp, breaks= c(0,1,20,50,300), labels=c("0","1-20","20-50","50+"), include.lowest=T),
+      n_laborable = if_else(dia_laborable=="Laborable", n,0),
+  ) %>%
+  group_by(lluvias)%>%
+  summarise(
+    prom_viajes_por_dia = mean(n),
+  ))
+```
+
+## Presión atmosférica
+
+```{r}
+clima_ecobici %>%
+  ggplot(aes(x=pres,y=n,color=dia_laborable))+
+  geom_smooth(se=T, method = 'lm') +
+  geom_point() +
+  labs(
+    y = "Cantidad de viajes",
+    x = "Presión Atmosféroca (Hpa)",
+    title = "Cant. de Viajes en función de la Presión"
+  )+
+  theme(legend.title=element_blank()) 
+```
+
+Se puede ver que si el día es laborable la presión afecta la cantidad de viajes de forma creciente y en los días no laborables también lo hace pero de forma muy leve.
+
+## Modelos:
+
+## Resultados:
+
+# Parte 2: Fake news
+
+## EDA:
+
+## Modelos:
+
+## Resultados:
