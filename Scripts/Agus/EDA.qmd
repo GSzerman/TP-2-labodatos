@@ -1,0 +1,150 @@
+---
+title: "EDA"
+format: 
+  html:
+    self-contained: true
+editor: visual
+---
+
+# imports
+
+```{r}
+require(tidyverse)
+datos = load("~/Escritorio/gjuhuiiugiu/TP-2-labodatos-main/tp2.RData")
+```
+
+```{r}
+#creo la variable dia laborable y lleno los nulos
+clima_ecobici = clima_ecobici %>%
+  mutate(
+    dia_laborable = if_else(lubridate::wday(date)==1| lubridate::wday(date)==7,FALSE, TRUE),
+    prcp = if_else(is.na(prcp),0,prcp)
+  )
+
+clima_ecobici
+```
+
+# EDA
+
+## DIA LABORABLE
+
+```{r}
+
+clima_ecobici %>%
+  group_by(dia_laborable) %>%
+  summarise(
+    prom_viajes = mean(n)
+  )%>%
+  ggplot(aes(y=prom_viajes, x=dia_laborable))+
+  geom_col(fill='darkcyan')
+
+```
+
+Se puede ver que hay muchos mas viajes los dias laborables. La tomare en consideracion para el resto de los analisis
+
+## PPTACION + DIA LABORABLE
+
+```{r}
+
+clima_ecobici %>%
+  mutate(
+      lluvias = cut(prcp, breaks= c(0,5,20,50,300), include.lowest=T),
+      n_laborable = if_else(dia_laborable, n,0),
+  ) %>%
+  group_by(lluvias)%>%
+  summarise(
+    prom_viajes_por_dia = mean(n),
+    n_laborable = mean(n_laborable),
+  ) %>%
+  ggplot(aes(x=lluvias, y=prom_viajes_por_dia))+
+  geom_col(aes(fill='Dia No Laborable')) +
+  geom_col(aes(y=n_laborable,fill='Dia Laborable'))
+
+```
+
+Se puede ver que hay menos promedio de viajes por dia (hasta \~30% menos) si llueve y si llueve mucho hay muchisimos menos.
+
+## PRESION
+
+```{r}
+clima_ecobici %>%
+  ggplot(aes(x=pres,y=n,color=dia_laborable))+
+  geom_smooth(se=T, method = 'lm') +
+  geom_point()
+```
+
+se puede ver que si el dia es laborable la presion afecta la cantidad de viajes de forma creciente y en los no laborables esta tambien pero es muy leve.
+
+## TMIN
+
+```{r}
+clima_ecobici %>%
+  ggplot(aes(x=tmin,y=n,color=dia_laborable))+
+  geom_smooth(se=T, method = 'lm') +
+  geom_point()
+```
+
+Creciente para ambas pero mucho mas leve que con la presion
+
+## TAVG
+
+```{r}
+clima_ecobici %>%
+  ggplot(aes(x=tavg,y=n,color=dia_laborable))+
+  geom_smooth(se=T, method = 'lm') +
+  geom_point()
+```
+
+Creciente con una menor pendiente que la presion pero mayor a tmin\
+
+## TMAX
+
+```{r}
+clima_ecobici %>%
+  ggplot(aes(x=tmax,y=n,color=dia_laborable))+
+  geom_smooth(se=T, method = 'lm') +
+  geom_point()
+```
+
+## VEL VIENTO
+
+```{r}
+clima_ecobici %>%
+  ggplot(aes(x=wspd,y=n,color=dia_laborable))+
+  geom_smooth(se=T, method = 'lm') +
+  geom_point()
+```
+
+Afecta a los dias No laborables de forma creciente y a los laborables de forma decreciente (aunque con mucha varianza para el ultimo)
+
+## DIRECCION DEL VIENTO
+
+```{r}
+clima_ecobici%>% 
+  mutate(
+    dir = if_else(wdir >=330 | wdir <30, 'N',
+                  if_else(wdir >= 30 & wdir <60, 'NE',
+                          if_else(wdir >=60 & wdir < 120,'E',
+                                  if_else(wdir >= 120 & wdir <150, 'SE',
+                                          if_else(wdir >= 150 & wdir < 210, 'S',
+                                                  if_else(wdir >=210 & wdir < 240, 'SO',
+                                                          if_else(wdir >=240 & wdir < 300, 'O',
+                                                                  if_else(wdir >=300 & wdir < 330,'NO',NA)))))))),
+    n_laborable = if_else(dia_laborable, n,0)
+  ) %>%
+  group_by(dir) %>%
+  summarize(
+      prom_viajes = mean(n),
+      prom_laborable = mean(n_laborable)
+  ) %>%
+  ggplot(aes(x=dir))+
+  geom_col(aes(y=prom_viajes, fill='Dia No laborable'))+
+  geom_col(aes(y=prom_laborable, fill='Dia Laborable')) +
+ 
+  scale_x_discrete(limits =c('N','NE','E','SE','S','SO','O','NO'))
+  #coord_polar(theta = "x",start=-0.40) +    #descomenta estas 2 para pizza
+  #scale_fill_manual(values=c('yellow', 'brown'))
+
+```
+
+Hay mas viajes en promedio cuando el viento viene del Este y nor este pero no es tan impactante, hay muchos menos viajes en los dias no laborables cuando el viento viene del SE
