@@ -33,7 +33,7 @@ kable(head(clima_ecobici))
 
 ## EDA:
 
-## Día Laborable
+### Día Laborable
 
 ```{r}
 clima_ecobici %>%
@@ -52,26 +52,19 @@ clima_ecobici %>%
 
 Se puede ver que hay muchos mas viajes los dias laborables. La tomare en consideracion para el resto de los analisis
 
-## Precipitación
+### Precipitación
 
 ```{r}
 clima_ecobici %>%
   mutate(
       lluvias = cut(prcp, breaks= c(0,1,20,50,300), labels=c("0","1-20","20-50","50+"), include.lowest=T),
-      n_laborable = if_else(dia_laborable=="Laborable", n,0),
   ) %>%
-  group_by(lluvias)%>%
-  summarise(
-    prom_viajes_por_dia = mean(n),
-    n_laborable = mean(n_laborable),
-  ) %>%
-  ggplot(aes(x=lluvias, y=prom_viajes_por_dia))+
-  geom_col(aes(fill='Día No Laborable')) +
-  geom_col(aes(y=n_laborable,fill='Día Laborable')) +
+  ggplot(aes(x=lluvias, y=n))+
+  geom_boxplot(fill="darkcyan")+
   labs(
-    title = "Viajes promedio segun precipitación",
+    title = "Cant. Viajes segun precipitación",
     x= "Precipitación (mm)",
-    y= "Promedio de viajes",
+    y= "Viajes",
     legend=""
   ) +
   theme(legend.title=element_blank()) 
@@ -92,7 +85,45 @@ kable(clima_ecobici %>%
   ))
 ```
 
-## Presión atmosférica
+```{r}
+clima_ecobici %>%
+  mutate(
+      lluvias = cut(prcp, breaks= c(0,1,20,50,300), labels=c("0","1-20","20-50","50+"), include.lowest=T),
+  ) %>% 
+  filter(dia_laborable == "Laborable") %>%
+  ggplot(aes(x=lluvias, y=n))+
+  geom_boxplot(fill="#F8766D")+
+  labs(
+    title = "Cant. Viajes segun precipitación",
+    subtitle = "Días Laborables",
+    x= "Precipitación (mm)",
+    y= "Viajes",
+    legend=""
+  ) +
+  theme(legend.title=element_blank()) 
+```
+
+```{r}
+clima_ecobici %>%
+  mutate(
+      lluvias = cut(prcp, breaks= c(0,1,20,50,300), labels=c("0","1-20","20-50","50+"), include.lowest=T),
+  ) %>% 
+  filter(dia_laborable != "Laborable") %>%
+  ggplot(aes(x=lluvias, y=n))+
+  geom_boxplot(fill="#619CFF")+
+  labs(
+    title = "Cant. Viajes segun precipitación",
+    subtitle = "Días No Laborables",
+    x= "Precipitación (mm)",
+    y= "Viajes",
+    legend=""
+  ) +
+  theme(legend.title=element_blank()) 
+```
+
+La tendencia se muestra indistinta de si es un día laboral o no, hay que destacar que hay algunos dias que son outliers, por encima para los dias No Laborables y por debajo para los Laborables que podrian llegar a afectar al modelo.
+
+### Presión atmosférica
 
 ```{r}
 clima_ecobici %>%
@@ -101,13 +132,91 @@ clima_ecobici %>%
   geom_point() +
   labs(
     y = "Cantidad de viajes",
-    x = "Presión Atmosféroca (Hpa)",
+    x = "Presión Atmosféroca (hPa)",
     title = "Cant. de Viajes en función de la Presión"
   )+
   theme(legend.title=element_blank()) 
 ```
 
 Se puede ver que si el día es laborable la presión afecta la cantidad de viajes de forma creciente y en los días no laborables también lo hace pero de forma muy leve.
+
+### Temp. Mínima
+
+```{r}
+clima_ecobici %>%
+  ggplot(aes(x=tmin,y=n,color=dia_laborable))+
+  geom_smooth(se=T, method = 'lm') +
+  geom_point() +
+  labs(
+    y = "Cantidad de viajes",
+    x = "Temp. Mínima (°C)",
+    title = "Cant. de Viajes en función de la Temp. Mínima"
+  )+
+  theme(legend.title=element_blank()) 
+```
+
+Creciente para ambas pero mucho mas leve que como ocurría con la presión.
+
+### Temp. Promedio
+
+```{r}
+clima_ecobici %>%
+  ggplot(aes(x=tavg,y=n,color=dia_laborable))+
+  geom_smooth(se=T, method = 'lm') +
+  geom_point() +
+  labs(
+    y = "Cantidad de viajes",
+    x = "Temp. Promedio (°C)",
+    title = "Cant. de Viajes en función de la Temp. Promedio"
+  )+
+  theme(legend.title=element_blank()) 
+```
+
+Creciente con una menor pendiente que la presión pero mayor a tmin
+
+### Temp. Máxima
+
+```{r}
+clima_ecobici %>%
+  ggplot(aes(x=tmax,y=n,color=dia_laborable))+
+  geom_smooth(se=T, method = 'lm') +
+  geom_point() +
+  labs(
+    y = "Cantidad de viajes",
+    x = "Temp. Máxima (°C)",
+    title = "Cant. de Viajes en función de la Temp. Máxima"
+  )+
+  theme(legend.title=element_blank()) 
+```
+
+Igual que la temperatura promedio, la cantidad de viajes es creciente.
+
+### Velocidad del Viento
+
+```{r}
+clima_ecobici %>%
+  ggplot(aes(x=wspd,y=n,color=dia_laborable))+
+  geom_smooth(se=T, method = 'lm') +
+  geom_point() +
+  theme(legend.title=element_blank()) +
+  labs(
+    x="Velocidad del Viento (km/h)",
+    y = "Cantidad de viajes",
+    title = "Cant. de Viajes en función de la Vel. del Viento"
+  )
+```
+
+Afecta a los dias No laborables de forma creciente y a los laborables de forma decreciente (aunque con mucha varianza)
+
+## Conclusión del EDA
+
+[Cosas importantes que sacamos del EDA]{.underline}:
+
+-   Hay mas viajes los Días Laborales.
+
+-   A mayor precipitación, menos Viajes.
+
+-   La presión atmosférica, la temperatura promedio, máxima y mínima afectan de forma creciente a la cantidad de viajes.
 
 ## Modelos:
 
@@ -116,6 +225,68 @@ Se puede ver que si el día es laborable la presión afecta la cantidad de viaje
 # Parte 2: Fake news
 
 ## EDA:
+
+```{r}
+df = fake_news%>%
+  select(type,title_has_excl,title_words, negative)
+
+kable(head(df))
+```
+
+### Título con simbolo de exclamación 
+
+```{r}
+df %>%
+  mutate(
+    exlamacion = if_else(title_has_excl,'Tiene Signo de Exclamación', 'No Tiene Signo de Exclamación')
+  ) %>%
+  ggplot(aes(fill=type,x=exlamacion)) +
+  theme(legend.title=element_blank()) +
+  labs(
+    x="",
+    y = "Cantidad de Noticias",
+    title = "Cantidad de noticias con simbolos de exclamación en el título"
+  ) +
+  geom_bar()
+```
+
+Podemos ver que la mayor parte de las noticias con titulos que tienen signos de exclamación son Fake.
+
+### Cantidad de palabras en el título
+
+```{r}
+df %>%
+  ggplot(aes(x=type, y=title_words, fill=type)) +
+  geom_boxplot() +
+  labs(
+    title ="Cantidad de palabras en el título",
+    x = "",
+    y = "Cantidad de palabras"
+  ) +
+  theme(
+    legend.position = "none"
+  )
+```
+
+Las Fake news suelen tener mas palabras en el título.
+
+### % de palabras negativas
+
+```{r}
+df %>%
+  ggplot(aes(x=type, y=negative, fill=type))+
+  geom_boxplot() +
+  labs(
+    title ="% de palabras negativas",
+    x = "",
+    y = "% de palabras negativas"
+  ) +
+  theme(
+    legend.position = "none"
+  )
+```
+
+Las Fake news suelen tener mas palabras negativas que las reales.
 
 ## Modelos:
 
