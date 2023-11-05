@@ -1,0 +1,44 @@
+```{r}
+load("./tp2.RData")
+```
+
+```{r}
+require(tidyverse)
+require(Metrics)
+
+#preparo el dataset
+df = clima_ecobici %>%
+  mutate(
+    dia_semana = weekdays(date),
+    dia_laborable = if_else(dia_semana == "sábado" | dia_semana == "domingo", T, F)
+  )
+
+
+```
+
+```{r}
+r2 = function(y_actual,y_predict){
+  return(cor(y_actual,y_predict)^2)
+}
+
+eval_formula = function(nombre_modelo, formula, x_train, x_test, y_train, y_test){
+  modelo = lm({{formula}}, data = x_train)
+  train_preds = predict(modelo, x_train)
+  test_preds = predict(modelo, x_test)
+  return(
+    data.frame(
+      nombre_modelo = nombre_modelo,
+      formula = formula,
+      train_RMSE = rmse(y_train, train_preds),
+      train_r2 = r2(y_train, train_preds),
+      test_RMSE = rmse(y_test, test_preds),
+      test_r2 = r2(y_test, test_preds)
+    )
+  )
+}
+```
+
+```{r}
+
+eval_formula("test","n ~ dia_laborable + prcp * pres", df, df, df$n, df$n)
+```

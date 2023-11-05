@@ -29,7 +29,7 @@ ggplot(fake_news, aes(x = title_has_excl, y = negative, color = type)) +
 
 # gráfico de dispersión para "title_has_excl" vs "title_words" respecto a "type"
 ggplot(fake_news, aes(x = title_has_excl, y = title_words, color = type)) +
-  geom_point() +
+  geom_col() +
   labs(x = "Título con exclamación", y = "Número de palabras en el título") +
   ggtitle("Gráfico de dispersión: title_has_excl vs title_words por tipo de noticia")
 
