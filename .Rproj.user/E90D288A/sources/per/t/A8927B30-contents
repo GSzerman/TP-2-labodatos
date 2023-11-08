@@ -1,7 +1,0 @@
-```{r}
-load("tp2.RData")
-
-
-head(clima_ecobici)
-```
-
