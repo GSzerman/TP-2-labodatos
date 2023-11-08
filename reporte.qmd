@@ -17,7 +17,7 @@ require(Metrics) #install.packages("Metrics")
 require(rpart) #install.packages("rpart")
 require(caret) #install.packages("caret")
 require(class) #install.packages("class")
-
+require(rpart.plot)
 
 load("./tp2.RData")
 theme_set(theme_classic())
@@ -347,7 +347,7 @@ df = clima_ecobici %>%
 ### Guardaremos todos los resultados en un dataframe
 
 ```{r}
-
+#|ooutput: F
 resultados = data.frame(
       nombre_exp = NA,
       formula = NA,
@@ -378,11 +378,156 @@ resultados = rbind(resultados, probar_experimento(
 kable(resultados %>% arrange(-test_r2))
 ```
 
-```{r}
+## Resultados:
 
+Los R cuadrados dieron muy bajos, veamos si lo podemos mejorar cargando los feriados (consideramos trasladables como puente, osea que arrastro a lo mas cercano al finde semana (viernes, si cayo jueves o lunes, si cayo martes) o muevo al viernes(si cae miercoles) para que sea finde largo.
+
+```{r}
+feriados = c(
+  "2022-01-01",
+  "2022-02-28",
+  "2022-03-01",
+  "2022-03-24",
+  "2022-04-02",
+  "2022-04-14",
+  "2022-04-15",
+  "2022-05-01",
+  "2022-05-18",
+  "2022-05-25",
+  "2022-06-17",
+  "2022-06-20",
+  "2022-07-09",
+  "2022-08-15",
+  "2022-10-07",
+  "2022-10-10",
+  "2022-11-20",
+  "2022-11-21",
+  "2022-12-08",
+  "2022-12-09",
+  "2022-12-25"
+)
 ```
 
-## Resultados:
+```{r}
+df = clima_ecobici %>%
+  mutate(
+    lluvias_binned = cut(prcp, breaks= c(0,1,20,50,300), labels=c("0","1-20","20-50","50+"), include.lowest=T),
+    llovio = if_else(prcp > 0, T, F),
+    dia_laborable = if_else(date %in% feriados, "No Laborable",dia_laborable)
+  )
+```
+
+```{r}
+resultados = rbind(resultados, probar_experimento(
+  "Feriados Dia laborable Presion",
+  seed_, "n", "dia_laborable", "pres", df))
+resultados = rbind(resultados, probar_experimento(
+  "Feriados Dia laborable pptacion",
+  seed_, "n", "dia_laborable", "prcp", df))
+resultados = rbind(resultados, probar_experimento(
+  "Feriados Dia laborable llueve o no",
+  seed_, "n", "dia_laborable", "llovio", df))
+resultados = rbind(resultados, probar_experimento(
+  "Feriados Dia laborable lluvia binned",
+  seed_, "n", "dia_laborable", "lluvias_binned", df))
+```
+
+```{r}
+kable(resultados %>% arrange(-test_r2))
+```
+
+Mejoró muchisimo el mejor modelo termino siendo dia laborable \* llovio (si bien hay empate elejimos el mas simple) con 0.74 de r2.
+
+### Grafico del mejor modelo
+
+```{r}
+  set.seed(42)
+  
+  df = clima_ecobici %>%
+  mutate(
+    lluvias_binned = cut(prcp, breaks= c(0,1,20,50,300), labels=c("0","1-20","20-50","50+"), include.lowest=T),
+    llovio = if_else(prcp > 0, T, F),
+    dia_laborable = if_else(date %in% feriados, "No Laborable",dia_laborable)
+  )
+  
+  #train test split
+  df$index = 1:length(df$n)
+  train = df %>% sample_frac(0.8)
+  test = df %>% anti_join(train, by="index")
+  
+  modelo = lm(n ~ dia_laborable * llovio, data = train)
+```
+
+```{r}
+summary(modelo)
+```
+
+Segun los coef:
+
+-   si el dia no es laborable tiene pendiente negativa, coincide con lo que vimos en el EDA
+
+-   si llovio tambien tiene pendiente negativa y coincide con el EDA
+
+-   si no es laborable y llueve tiene pendiente positiva, este es raro ya que no coincide con el EDA.
+
+Como tenemos 2 variables booleanas vamos a graficar n por cada una de las combinaciones de coeficientes y comparar los predicts con los reales.
+
+```{r}
+intercept = summary(modelo)$coefficients[1]
+dia_no_laborable = summary(modelo)$coefficients[2]
+llovio_t = summary(modelo)$coefficients[3]
+dia_no_laborable_llovio_t = summary(modelo)$coefficients[4]
+
+df %>% mutate(
+    preds = predict(modelo, df)
+  ) %>%
+  ggplot()+
+  geom_point(aes(y=n, x=llovio, shape="Real"),color="darkcyan",alpha=0.3) +
+  geom_abline(aes(slope = dia_no_laborable, intercept = intercept, color="Dia No Laborable")) +
+  geom_abline(aes(slope = llovio_t, intercept = intercept,color="Llovio = T")) +
+  geom_abline(aes(slope = dia_no_laborable_llovio_t, intercept = intercept,color="Dia No Laborable + LLovio = T")) +
+  geom_point(aes(y=preds, x=llovio, shape="Preds"),color="darkorange",alpha=0.3) +
+  labs(
+    title= "Cantidad de viajes x llovio"
+  )
+```
+
+por dia laborable
+
+```{r}
+df %>% mutate(
+    preds = predict(modelo, df)
+  ) %>%
+  ggplot()+
+  geom_point(aes(y=n, x=dia_laborable, shape="Real"),color="darkcyan",alpha=0.3) +
+  geom_abline(aes(slope = dia_no_laborable, intercept = intercept, color="Dia No Laborable")) +
+  geom_abline(aes(slope = llovio_t, intercept = intercept,color="Llovio = T")) +
+  geom_abline(aes(slope = dia_no_laborable_llovio_t, intercept = intercept,color="Dia No Laborable + LLovio = T")) +
+  geom_point(aes(y=preds, x=dia_laborable, shape="Preds"),color="darkorange",alpha=0.3) +
+  labs(
+    title= "Cantidad de viajes x dia_laborable"
+  )
+```
+
+veamos dia no laborable y llovio = True tmb
+
+```{r}
+df %>% mutate(
+    preds = predict(modelo, df),
+    dia_lab_x_llovio = if_else(
+      dia_laborable == "No Laborable" & llovio, T, F
+    )
+  ) %>%
+  ggplot()+
+  geom_point(aes(y=n, x=dia_lab_x_llovio, shape="Real"),color="darkcyan",alpha=0.3) +
+  geom_abline(aes(slope = dia_no_laborable, intercept = intercept, color="Dia No Laborable")) +
+  geom_abline(aes(slope = llovio_t, intercept = intercept,color="Llovio = T")) +
+  geom_abline(aes(slope = dia_no_laborable_llovio_t, intercept = intercept,color="Dia No Laborable + LLovio = T")) +
+  geom_point(aes(y=preds, x=dia_lab_x_llovio, shape="Preds"),color="darkorange",alpha=0.3) +
+  labs(
+    title= "Cantidad de viajes x dia_no_lab_x_llovio"
+  )
+```
 
 # Parte 2: Fake news
 
@@ -455,21 +600,32 @@ Las Fake news suelen tener mas palabras negativas que las reales.
 ```{r}
 
 set.seed(seed_)
+fake_news$id = 1:length(fake_news$id)
+train_data = fake_news %>% sample_frac(0.8) 
+test_data = fake_news %>% anti_join(train_data, by="id")
 
-# Dividimos el DataFrame en conjuntos de entrenamiento y prueba
-n <- nrow(fake_news)
-test_indices <- sample(1:n, 0.2 * n)  # El 20% de los datos para pruebas
-train_data <- fake_news[-test_indices, ]
-test_data <- fake_news[test_indices, ]
-
-
-
+train_data = train_data %>% select(-id)
+test_data = test_data %>% select(-id)
 
 # Convertimos la columna "type" a factor con los mismos niveles en ambos conjuntos
 train_data$type <- factor(train_data$type, levels = unique(fake_news$type))
 test_data$type <- factor(test_data$type, levels = unique(fake_news$type))
 
+####ESTO ES PARA FIXEAR UN BUG RANDOM
+#No se porque Pero si spliteo una vez se buguea todo y la matriz de test sale mal
+#Pero si lo corro 2 veces anda perfecto 
+set.seed(seed_)
+fake_news$id = 1:length(fake_news$id)
+train_data = fake_news %>% sample_frac(0.8) 
+test_data = fake_news %>% anti_join(train_data, by="id")
 
+train_data = train_data %>% select(-id)
+test_data = test_data %>% select(-id)
+
+# Convertimos la columna "type" a factor con los mismos niveles en ambos conjuntos
+train_data$type <- factor(train_data$type, levels = unique(fake_news$type))
+test_data$type <- factor(test_data$type, levels = unique(fake_news$type))
+####
 
 # Definimos una función para evaluar modelos con diferentes combinaciones de características
 evaluate_feature_combinations <- function(data, target_col, feature_cols) {
@@ -480,39 +636,35 @@ evaluate_feature_combinations <- function(data, target_col, feature_cols) {
     
     for (i in 1:ncol(combinations)) {
       selected_features <- c(target_col, combinations[, i])
-      train_data <- data[, selected_features]
-      
-      
+
       # Entrenamos el modelo
       model <- rpart(paste(target_col, "~", paste(combinations[, i], collapse = " + "), sep = ""), data = train_data)
       
       
-      
       # Predecimos
+      train_pred = predict(model, train_data, type = "class")
+      
       predictions <- predict(model, data, type = "class")
-      
-      
-      
+
       # Evaluamos el modelo
-      confusion_matrix <- confusionMatrix(predictions, data[, target_col])
-      
-      
-      
-      # Obtenemos la matriz de confusión y precisión
-      result[[paste(combinations[, i], collapse = "-")]] <- list(
+      confusion_matrix <- confusionMatrix(predictions, data[,target_col], positive="fake")
+      train_conf_matrix = confusionMatrix(train_pred, train_data$type, positive="fake")
+
+      # Obtenemos la matriz de confusión y las metricas
+      result[[paste(combinations[, i], collapse = "+")]] <- list(
+        modelo = model,
         ConfusionMatrix = confusion_matrix$table,
-        Accuracy = confusion_matrix$overall["Accuracy"]
+        Accuracy_test = sum(diag(confusion_matrix$table)) / sum(confusion_matrix$table),
+        Recall_test = confusion_matrix$table[1,1] / (confusion_matrix$table[1,1] + confusion_matrix$table[2,1]),
+        Train_conf = train_conf_matrix$table,
+        Accuracy_train = sum(diag(train_conf_matrix$table)) / sum(train_conf_matrix$table),
+        Recall_train = train_conf_matrix$table[1,1] / (train_conf_matrix$table[1,1] + train_conf_matrix$table[2,1])
       )
     }
   }
   
   return(result)
 }
-
-
-
-
-
 
 # Definimos los nombres de las columnas de características y el objetivo
 feature_columns <- c("title_has_excl", "title_words", "negative")
@@ -526,34 +678,55 @@ results <- evaluate_feature_combinations(test_data, target_column, feature_colum
 
 ```{r}
 # Imprimimos los resultados (matriz de confusión y precisión) de decision tree
+resultados_tree = data.frame(
+  Combinacion = NA,
+  Test_Accuracy = NA,
+  Train_Accuracy = NA,
+  Test_Recall = NA,
+  Train_Recall = NA,
+  Test_TP = NA,
+  Test_FP =NA,
+  Test_FN = NA,
+  Test_TN = NA
+) %>% filter(!is.na(Combinacion))
+
 for (combination_name in names(results)) {
-  cat("Combinación:", combination_name, "\n")
-  print(results[[combination_name]]$ConfusionMatrix)
-  cat("Accuracy:", results[[combination_name]]$Accuracy, "\n\n")
+  res = data.frame(
+    Combinacion = combination_name,
+    Test_Accuracy = results[[combination_name]]$Accuracy_test,
+    Train_Accuracy = results[[combination_name]]$Accuracy_train,
+    Test_Recall = results[[combination_name]]$Recall_test,
+    Train_Recall = results[[combination_name]]$Recall_train,
+    Test_TP = results[[combination_name]]$ConfusionMatrix[1,1],
+    Test_FP =results[[combination_name]]$ConfusionMatrix[1,2],
+    Test_FN = results[[combination_name]]$ConfusionMatrix[2,1],
+    Test_TN = results[[combination_name]]$ConfusionMatrix[2,2]
+  )
+  resultados_tree = rbind(resultados_tree,res)
 }
 
+kable(resultados_tree %>% arrange(-Test_Accuracy))
 ```
 
-Combinaciones de columna con mayor accuracy (0.74):
+el modelo con mayor accuracy (0.63) usa las siguientes columnas:
 
 -   title_words,
 
--   title_has_excl-title_words,
+-   title_has_excl
 
--   title-words-negative
+Observamos ademas del accuracy el recall porque ,si habia un empate o estaban muy cerca, preferiamos minimizar la cantidad de falsos negativos (Que haya noticias reales que sean detectadas como fake news no es tanto problema, pero si es un problema que haya fake news que sean detectadas como reales y permitida su circulación). Aun asi el accuracy es muy bajo, se podrian agregar otras columnas del dataset para obtener mejores resultados o usar un modelo mas complejo.
 
-```{=html}
-<!-- -->
+### Matriz de confusión del mejor modelo
+
+```{r}
+kable(results["title_has_excl+title_words"]$`title_has_excl+title_words`$ConfusionMatrix)
 ```
--   title_has_excl - title_words - negative
 
-Por el contexto, preferimos minimizar la cantidad de falsos negativos (Que haya noticias reales que sean detectadas como fake news no es tanto problema, pero si es un problema que haya fake news que sean detectadas como reales y permitida su circulación)
+### Grafico de decisiones del modelo.
 
-En este caso particular, las 4 posibilidades tienen la misma accuracy y la misma matriz de confusión asi que elgiremos el último caso que es la combinación de las 3 columnas
-
--   title_has_excl - title_words - negative
-
-## 
+```{r}
+rpart.plot(results["title_has_excl+title_words"]$`title_has_excl+title_words`$modelo)
+```
 
 ## Entrenamos el modelo con KNN:
 
@@ -595,14 +768,24 @@ evaluate_feature_combinations_knn <- function(train_data, test_data, target_col,
         # Evaluamos el modelo
         confusion_matrix <- table(model, test_data[, selected_features][, 1])
         
+        train_pred = knn(train_data[, selected_features][-1], train_data[, selected_features][-1], train_data[, selected_features][, 1], k = k_value)
+        
+        train_matrix = table(train_pred, train_data[, selected_features][, 1])
+        
         # Calculamos la precisión
         accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+        train_acc = sum(diag(train_matrix)) / sum(train_matrix)
         
         # Almacenamos resultados
-        result[[paste(combinations[, i], collapse = "-")]]$k_value <- list(
+        result[[paste(combinations[, i], collapse = "+")]]$k_value <- list(
           ConfusionMatrix = confusion_matrix,
-          Accuracy = accuracy
-        )
+          Test_Accuracy = accuracy,
+          Train_Accuracy =train_acc,
+          Recall_test = confusion_matrix[1,1] / (confusion_matrix[1,1] + confusion_matrix[2,1]),
+          Train_conf = train_matrix,
+        Recall_train = train_matrix[1,1] / (train_matrix[1,1] + train_matrix[2,1])
+      )
+        
       }
     }
   }
@@ -630,17 +813,45 @@ results_knn <- evaluate_feature_combinations_knn(train_data, test_data, target_c
 
 ```{r}
 # Imprimimos los resultados (matriz de confusión y precisión) de KNN para cada combinación de características y k
+resultados_knn =resultados_tree = data.frame(
+  Combinacion = NA,
+  K=NA,
+  Test_Accuracy = NA,
+  Train_Accuracy = NA,
+  Test_Recall = NA,
+  Train_Recall = NA,
+  Test_TP = NA,
+  Test_FP =NA,
+  Test_FN = NA,
+  Test_TN = NA
+) %>% filter(!is.na(Combinacion))
+
 for (combination_name in names(results_knn)) {
   for (k_value in k_values_to_test) {
-    cat("Combinación:", combination_name, "\n")
-    cat("Valor de k:", k_value, "\n")
-    print(results_knn[[combination_name]]$k_value$ConfusionMatrix)
-    cat("Accuracy:", results_knn[[combination_name]]$k_value$Accuracy, "\n\n")
+  res = data.frame(
+    Combinacion = combination_name,
+    K=k_value,
+    Test_Accuracy = results_knn[[combination_name]]$k_value$Test_Accuracy,
+    Train_Accuracy = results_knn[[combination_name]]$k_value$Train_Accuracy,
+    Test_Recall = results_knn[[combination_name]]$k_value$Recall_test,
+    Train_Recall = results_knn[[combination_name]]$k_value$Recall_train,
+    Test_TP = results_knn[[combination_name]]$k_value$ConfusionMatrix[1,1],
+    Test_FP =results_knn[[combination_name]]$k_value$ConfusionMatrix[1,2],
+    Test_FN = results_knn[[combination_name]]$k_value$ConfusionMatrix[2,1],
+    Test_TN = results_knn[[combination_name]]$k_value$ConfusionMatrix[2,2]
+  )
+  resultados_knn = rbind(resultados_knn, res)
   }
 }
+
+kable(resultados_knn %>% arrange(-Test_Accuracy))
 ```
 
-La combinación de columnas title_has_excl - title_words nos dió un accuracy de 0.72 . Para todos los valores de k probados, se obtiene la misma matriz de confusión. Tomaremos el valor k=3
+La combinación de columnas title_has_excl + title_words nos dió un accuracy de 0.68 . Para todos los valores de k probados, se obtiene la misma matriz de confusión. Tomaremos el valor k=3
+
+## Mejor modelo entre Tree vs KNN
+
+Si bien knn dio un poco mejor el accuracy, elejimos el Tree como el mejor por tener Muchisimo mejor Recall ya que preferimos que el modelo deje pasar fake news sin detectarlas.
 
 ## Probabilidad de que articulo sea fake news:
 
@@ -648,30 +859,19 @@ Debido a que el algoritmo decision-tree mostró un mejor accuracy, decidimos uti
 
 ```{r}
 set.seed(seed_)
+fake_news$id = 1:length(fake_news$id)
+train_data = fake_news %>% sample_frac(0.8) 
+test_data = fake_news %>% anti_join(train_data, by="id")
 
-# Dividimos el DataFrame en conjuntos de entrenamiento y prueba
-n <- nrow(fake_news)
-test_indices <- sample(1:n, 0.2 * n)  # El 20% de los datos para pruebas
-train_data <- fake_news[-test_indices, ]
-test_data <- fake_news[test_indices, ]
-
-
-
-
-# Convertimos la columna "type" a factor con los mismos niveles en ambos conjuntos
-train_data$type <- factor(train_data$type, levels = unique(fake_news$type))
-test_data$type <- factor(test_data$type, levels = unique(fake_news$type))
-```
-
-```{r}
-
+train_data = train_data %>% select(-id)
+test_data = test_data %>% select(-id)
 
 # Convrtimos 'title_has_excl' en tipo numérico
 train_data$title_has_excl <- as.numeric(train_data$title_has_excl)
 
 
 # Entrenamos el modelo utilizando solo las 3 columnas que queremos
-model <- rpart(type ~ title_has_excl + title_words + negative, data = train_data)
+model <- rpart(type ~ title_has_excl + title_words, data = train_data)
 # Creamos un nuevo conjunto de datos con las características del nuevo artículo
 new_article <- data.frame(
   title_has_excl = 0,  # No tiene signos de exclamación
@@ -692,4 +892,4 @@ cat("Clase predicha:", predicted_class, "\n")
 cat("Probabilidad de ser 'fake-news':", fake_news_probability, "\n")
 ```
 
-La probabilidad de que el artículo sea fake con 0 signos de exlamación, 15 palabras en el título y 6% de palabras con connotación negativa es de 64%
+La probabilidad de que el artículo sea fake con 0 signos de exlamación, 15 palabras en el título y 6% de palabras con connotación negativa es de 30.7%
