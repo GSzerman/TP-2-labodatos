@@ -14,6 +14,10 @@ author: "Agustin Lehmann, Gabriel Szerman, Ernesto Mercado, Ignacio Gallego"
 require(tidyverse)
 require(knitr)
 require(Metrics) #install.packages("Metrics")
+require(rpart) #install.packages("rpart")
+require(caret) #install.packages("caret")
+require(class) #install.packages("class")
+
 
 load("./tp2.RData")
 theme_set(theme_classic())
@@ -265,7 +269,7 @@ eval_formula = function(nombre_modelo, formula, x_train, x_test, y_train, y_test
 preprocess_df = function(df, target, colum_1, colum_2){
   return(
     df %>%
-      # tube q poner el all_of pq me tiraba warnings
+      # tuve que poner el all_of pq me tiraba warnings
       select(all_of({{target}}), all_of({{colum_1}}), all_of({{colum_2}})) %>%
       rename(
         "y"=target, 
@@ -355,6 +359,7 @@ resultados = data.frame(
 ) %>% filter(!is.na(seed))
 
 seed_ = 42
+
 resultados = rbind(resultados, probar_experimento(
   "Dia laborable Presion",
   seed_, "n", "dia_laborable", "pres", df))
@@ -445,6 +450,246 @@ df %>%
 
 Las Fake news suelen tener mas palabras negativas que las reales.
 
-## Modelos:
+## Entrenamos el modelo con Decision Tree:
 
-## Resultados:
+```{r}
+
+set.seed(seed_)
+
+# Dividimos el DataFrame en conjuntos de entrenamiento y prueba
+n <- nrow(fake_news)
+test_indices <- sample(1:n, 0.2 * n)  # El 20% de los datos para pruebas
+train_data <- fake_news[-test_indices, ]
+test_data <- fake_news[test_indices, ]
+
+
+
+
+# Convertimos la columna "type" a factor con los mismos niveles en ambos conjuntos
+train_data$type <- factor(train_data$type, levels = unique(fake_news$type))
+test_data$type <- factor(test_data$type, levels = unique(fake_news$type))
+
+
+
+# Definimos una función para evaluar modelos con diferentes combinaciones de características
+evaluate_feature_combinations <- function(data, target_col, feature_cols) {
+  result <- list()
+  
+  for (k in 1:length(feature_cols)) {
+    combinations <- combn(feature_cols, k)
+    
+    for (i in 1:ncol(combinations)) {
+      selected_features <- c(target_col, combinations[, i])
+      train_data <- data[, selected_features]
+      
+      
+      # Entrenamos el modelo
+      model <- rpart(paste(target_col, "~", paste(combinations[, i], collapse = " + "), sep = ""), data = train_data)
+      
+      
+      
+      # Predecimos
+      predictions <- predict(model, data, type = "class")
+      
+      
+      
+      # Evaluamos el modelo
+      confusion_matrix <- confusionMatrix(predictions, data[, target_col])
+      
+      
+      
+      # Obtenemos la matriz de confusión y precisión
+      result[[paste(combinations[, i], collapse = "-")]] <- list(
+        ConfusionMatrix = confusion_matrix$table,
+        Accuracy = confusion_matrix$overall["Accuracy"]
+      )
+    }
+  }
+  
+  return(result)
+}
+
+
+
+
+
+
+# Definimos los nombres de las columnas de características y el objetivo
+feature_columns <- c("title_has_excl", "title_words", "negative")
+target_column <- "type"  # Cambiar a la columna "type" que deseas predecir
+
+# Llamamos a la función para evaluar las combinaciones de características en el conjunto de prueba
+results <- evaluate_feature_combinations(test_data, target_column, feature_columns)
+```
+
+## Resultados Decision Tree:
+
+```{r}
+# Imprimimos los resultados (matriz de confusión y precisión) de decision tree
+for (combination_name in names(results)) {
+  cat("Combinación:", combination_name, "\n")
+  print(results[[combination_name]]$ConfusionMatrix)
+  cat("Accuracy:", results[[combination_name]]$Accuracy, "\n\n")
+}
+
+```
+
+Combinaciones de columna con mayor accuracy (0.74):
+
+-   title_words,
+
+-   title_has_excl-title_words,
+
+-   title-words-negative
+
+```{=html}
+<!-- -->
+```
+-   title_has_excl - title_words - negative
+
+Por el contexto, preferimos minimizar la cantidad de falsos negativos (Que haya noticias reales que sean detectadas como fake news no es tanto problema, pero si es un problema que haya fake news que sean detectadas como reales y permitida su circulación)
+
+En este caso particular, las 4 posibilidades tienen la misma accuracy y la misma matriz de confusión asi que elgiremos el último caso que es la combinación de las 3 columnas
+
+-   title_has_excl - title_words - negative
+
+## 
+
+## Entrenamos el modelo con KNN:
+
+```{r}
+
+set.seed(seed_)
+
+# Cargamos la librería para KNN
+library(class)
+
+# Dividimos el DataFrame en conjuntos de entrenamiento y prueba
+n <- nrow(fake_news)
+test_indices <- sample(1:n, 0.2 * n)  # Seleccionamos el 20% de los datos para pruebas
+train_data <- fake_news[-test_indices, ]
+test_data <- fake_news[test_indices, ]
+
+# Eliminamos filas con valores faltantes en ambos conjuntos
+train_data <- na.omit(train_data)
+test_data <- na.omit(test_data)
+
+# Convertimos la columna "type" a factor con los mismos niveles en ambos conjuntos
+train_data$type <- factor(train_data$type, levels = unique(fake_news$type))
+test_data$type <- factor(test_data$type, levels = unique(fake_news$type))
+
+# Definimos una función para evaluar modelos KNN con diferentes combinaciones de características y k
+evaluate_feature_combinations_knn <- function(train_data, test_data, target_col, feature_cols, k_values) {
+  result <- list()
+  
+  for (k in 1:length(feature_cols)) {
+    combinations <- combn(feature_cols, k)
+    
+    for (i in 1:ncol(combinations)) {
+      selected_features <- c(target_col, combinations[, i])
+      
+      for (k_value in k_values) {
+        # Entrenamos el modelo KNN
+        model <- knn(train_data[, selected_features][-1], test_data[, selected_features][-1], train_data[, selected_features][, 1], k = k_value)
+        
+        # Evaluamos el modelo
+        confusion_matrix <- table(model, test_data[, selected_features][, 1])
+        
+        # Calculamos la precisión
+        accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+        
+        # Almacenamos resultados
+        result[[paste(combinations[, i], collapse = "-")]]$k_value <- list(
+          ConfusionMatrix = confusion_matrix,
+          Accuracy = accuracy
+        )
+      }
+    }
+  }
+  
+  return(result)
+}
+
+# Definimos las columnas de características y el objetivo
+feature_columns <- c("title_has_excl", "title_words", "negative")
+target_column <- "type"
+
+# Definimos los valores de k que deseamos probar
+k_values_to_test <- c(3, 5, 7, 9, 11)
+
+# Llamamos a la función para evaluar combinaciones de características y diferentes valores de k en el conjunto de prueba con KNN
+results_knn <- evaluate_feature_combinations_knn(train_data, test_data, target_column, feature_columns, k_values_to_test)
+
+
+
+
+
+```
+
+## Resultados KNN:
+
+```{r}
+# Imprimimos los resultados (matriz de confusión y precisión) de KNN para cada combinación de características y k
+for (combination_name in names(results_knn)) {
+  for (k_value in k_values_to_test) {
+    cat("Combinación:", combination_name, "\n")
+    cat("Valor de k:", k_value, "\n")
+    print(results_knn[[combination_name]]$k_value$ConfusionMatrix)
+    cat("Accuracy:", results_knn[[combination_name]]$k_value$Accuracy, "\n\n")
+  }
+}
+```
+
+La combinación de columnas title_has_excl - title_words nos dió un accuracy de 0.72 . Para todos los valores de k probados, se obtiene la misma matriz de confusión. Tomaremos el valor k=3
+
+## Probabilidad de que articulo sea fake news:
+
+Debido a que el algoritmo decision-tree mostró un mejor accuracy, decidimos utilizarlo para predecir la probabilidad de que un artículo sea fake si tiene 0 signos de exclamación, 15 palabras en el título y 6% de palabras con connotación negativa
+
+```{r}
+set.seed(seed_)
+
+# Dividimos el DataFrame en conjuntos de entrenamiento y prueba
+n <- nrow(fake_news)
+test_indices <- sample(1:n, 0.2 * n)  # El 20% de los datos para pruebas
+train_data <- fake_news[-test_indices, ]
+test_data <- fake_news[test_indices, ]
+
+
+
+
+# Convertimos la columna "type" a factor con los mismos niveles en ambos conjuntos
+train_data$type <- factor(train_data$type, levels = unique(fake_news$type))
+test_data$type <- factor(test_data$type, levels = unique(fake_news$type))
+```
+
+```{r}
+
+
+# Convrtimos 'title_has_excl' en tipo numérico
+train_data$title_has_excl <- as.numeric(train_data$title_has_excl)
+
+
+# Entrenamos el modelo utilizando solo las 3 columnas que queremos
+model <- rpart(type ~ title_has_excl + title_words + negative, data = train_data)
+# Creamos un nuevo conjunto de datos con las características del nuevo artículo
+new_article <- data.frame(
+  title_has_excl = 0,  # No tiene signos de exclamación
+  title_words = 15,    # 15 palabras en el título
+  negative = 0.06      # 6% de palabras con connotaciones negativas
+)
+
+# Utilizamos el modelo de árbol de decisión para predecir la clase del nuevo artículo
+predicted_class <- predict(model, new_article, type = "class")
+
+# Calculamos la probabilidad de que el artículo sea "fake-news"
+predicted_probability <- predict(model, new_article, type = "prob")
+
+fake_news_probability <- predicted_probability[1, "fake"]
+
+# Imprimir la clase predicha y la probabilidad
+cat("Clase predicha:", predicted_class, "\n")
+cat("Probabilidad de ser 'fake-news':", fake_news_probability, "\n")
+```
+
+La probabilidad de que el artículo sea fake con 0 signos de exlamación, 15 palabras en el título y 6% de palabras con connotación negativa es de 64%
